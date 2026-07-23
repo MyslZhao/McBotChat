@@ -1,0 +1,6 @@
+name: McBotChat
+version: '${version}'
+
+main: top.myslzhao.mcbotchat.McBotChat
+api-version: '26.2'
+load: POSTWORLD
