@@ -1,25 +1,10 @@
-# Gradle
+
 .gradle/
 build/
 
-# IntelliJ IDEA
 .idea/
-*.iml
-*.iws
-out/
 
-# Eclipse
-.classpath
-.project
-.settings/
-
-# VS Code
-.vscode/
-
-# Build outputs
-build/libs/
-target/
-dist/
+run/
 
 # Java / JVM
 *.class
@@ -27,24 +12,10 @@ dist/
 *.war
 *.ear
 
-# Logs and temporary files
-*.log
-.DS_Store
-Thumbs.db
-
-# Local configuration and credentials
-local.properties
-.env
-.env.local
-
-# Misc
-dependency-reduced-pom.xml
-release.properties
-
-# Node
-node_modules/
-
 # Keep IDE files but ignore workspace and local settings
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/dictionaries
+
+gradlew
+gradlew.bat

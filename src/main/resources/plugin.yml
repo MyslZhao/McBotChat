@@ -2,5 +2,8 @@ name: McBotChat
 version: '${version}'
 
 main: top.myslzhao.mcbotchat.McBotChat
-api-version: '26.2'
+api-version: '26.1.2'
 load: POSTWORLD
+
+libraries:
+  - "com.google.code.gson:gson:2.10.1"
