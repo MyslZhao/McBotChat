@@ -13,10 +13,15 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class PlayerListener implements Listener {
-    private final AiChatManagerActions aiChatManagerActions;
+    private AiChatManagerActions aiChatManagerActions;
     private final JavaPlugin plugin;
+    private final Map<UUID, Long> cooldown = new HashMap<>();
+    private static final long COOLDOWN_MS = 5000;
 
     public PlayerListener(AiChatManagerActions aiChatManagerActions, JavaPlugin plugin) {
         this.aiChatManagerActions = aiChatManagerActions;
@@ -40,6 +45,13 @@ public class PlayerListener implements Listener {
      */
     @EventHandler
     public void onPlayerChat(AsyncChatEvent event) throws IOException, InterruptedException {
+        UUID uuid = event.getPlayer().getUniqueId();
+        long now = System.currentTimeMillis();
+        if (cooldown.containsKey(uuid) && now - cooldown.get(uuid) < COOLDOWN_MS) {
+            event.getPlayer().sendMessage(Component.text("Frequent requests，please wait " + (COOLDOWN_MS / 1000) + " sec before next request."));
+            return;
+        }
+        cooldown.put(uuid, now);
 
         Component msgComponent = event.originalMessage();
         String msgRowString = PlainTextComponentSerializer.plainText().serialize(msgComponent);
@@ -86,5 +98,12 @@ public class PlayerListener implements Listener {
                     return null;
                 });
 
+    }
+
+    /**
+     * 供 reload 时调用的 setter，替换内部的 AiChatManagerActions 实例
+     */
+    public void setAiChatManagerActions(AiChatManagerActions aiChatManagerActions) {
+        this.aiChatManagerActions = aiChatManagerActions;
     }
 }

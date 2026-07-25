@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 
 /**
  * 上下文管理类,负责构造消息，维护历史。
@@ -14,7 +15,7 @@ public class AiChatManagerActions {
             Collections.synchronizedList(new ArrayList<>());
     private final ChatWithAiActions chatWithAiActions;
     private static final int MAX_HISTORY_SIZE = 20;
-
+    private static final Semaphore SEMAPHORE = new Semaphore(5);
     private final String systemPrompt;
 
 
@@ -100,13 +101,16 @@ public class AiChatManagerActions {
      * @see ChatWithAiActions#askWithMessages(List)
      */
     public CompletableFuture<String> ask(String playerName, String message) {
-        addUserMessage(playerName, message);
+        if (!SEMAPHORE.tryAcquire()) {
+            return CompletableFuture.failedFuture(new RuntimeException("系统繁忙，请稍后再试。"));
+        }
 
         List<Map<String, String>> fullMessages = buildMessage(playerName, message);
 
         return chatWithAiActions.askWithMessages(fullMessages)
                 .thenApply(
                         response -> {
+                            addUserMessage(playerName, message);
                             addAssistantMessage(response);
                             return response;
                         }
@@ -116,6 +120,9 @@ public class AiChatManagerActions {
                             Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                             throw new RuntimeException(cause.getMessage(), cause);
                         }
+                )
+                .whenComplete(
+                        (_, _) -> SEMAPHORE.release()
                 );
     }
 

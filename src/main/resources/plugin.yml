@@ -7,3 +7,15 @@ load: POSTWORLD
 
 libraries:
   - "com.google.code.gson:gson:2.10.1"
+
+commands:
+  mcbotchat:
+    description: Main command for McBotChat
+    usage: /<command> reload
+    permission: mcbotchat.reload
+    permission-message: You don't have permission to reload the plugin.
+
+permissions:
+  mcbotchat.reload:
+    description: Allows reloading the config
+    default: op

@@ -15,13 +15,14 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.nio.charset.StandardCharsets;
 
 /**
  * ai聊天行为类，负责验证apiKey，发起请求与解析返回消息。
  *
  * @see AiChatManagerActions
  */
-public class ChatWithAiActions {
+class ChatWithAiActions {
     private final HttpClient client = HttpClient.newHttpClient();
     private final String apiKey;
 
@@ -49,7 +50,7 @@ public class ChatWithAiActions {
                         .timeout(Duration.ofSeconds(10))
                         .build();
 
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                 int code = response.statusCode();
                 switch (code) {
                     case 200:
@@ -171,7 +172,7 @@ public class ChatWithAiActions {
                 .timeout(Duration.ofSeconds(30))
                 .build();
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         String responseBody = response.body();
 
         try {
@@ -217,7 +218,7 @@ public class ChatWithAiActions {
                 .timeout(Duration.ofSeconds(30))
                 .build();
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         String responseBody = response.body();
 
         try {
