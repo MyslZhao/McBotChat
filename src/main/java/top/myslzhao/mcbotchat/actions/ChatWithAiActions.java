@@ -1,5 +1,7 @@
 package top.myslzhao.mcbotchat.actions;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import top.myslzhao.mcbotchat.utils.ApiKeyStatus;
@@ -9,87 +11,232 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
+/**
+ * ai聊天行为类，负责验证apiKey，发起请求与解析返回消息。
+ *
+ * @see AiChatManagerActions
+ */
 public class ChatWithAiActions {
     private final HttpClient client = HttpClient.newHttpClient();
     private final String apiKey;
 
-    private ApiKeyStatus isValid;
+    private final CompletableFuture<ApiKeyStatus> validationFuture;
 
     public ChatWithAiActions(String apiKey) {
         this.apiKey = apiKey;
-
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.deepseek.com/v1/models"))
-                    .header("Authorization", "Bearer " + this.apiKey)
-                    .GET()
-                    .timeout(java.time.Duration.ofSeconds(10))
-                    .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            int statusCode = response.statusCode();
-
-            switch (statusCode) {
-                case 200:
-                    isValid = ApiKeyStatus.SUCCESS;
-                    break;
-                case 401:
-                    isValid = ApiKeyStatus.UNAUTHORIZED;
-                    break;
-                case 402:
-                    isValid = ApiKeyStatus.INSUFFICIENT_BALANCE;
-                    break;
-                default:
-                    isValid = ApiKeyStatus.OTHER_ERROR;
-            }
-        } catch (IOException | InterruptedException e) {
-            isValid = ApiKeyStatus.NETWORK_ERROR;
-        }
+        this.validationFuture = validateKeyAsync();
     }
 
-    public String ask(String prompt) throws IOException, InterruptedException {
+    /**
+     * Future 验证api-key
+     */
+    public CompletableFuture<ApiKeyStatus> validateKeyAsync() {
         if (apiKey == null || apiKey.isEmpty()) {
-            return null;
+            return CompletableFuture.completedFuture(ApiKeyStatus.UNAUTHORIZED);
         }
 
-        String json = String.format("""
-            {
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": "%s"}]
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://api.deepseek.com/v1/models"))
+                        .header("Authorization", "Bearer " + apiKey)
+                        .GET()
+                        .timeout(Duration.ofSeconds(10))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                int code = response.statusCode();
+                switch (code) {
+                    case 200:
+                        return ApiKeyStatus.SUCCESS;
+                    case 401:
+                        return ApiKeyStatus.UNAUTHORIZED;
+                    case 402:
+                        return ApiKeyStatus.INSUFFICIENT_BALANCE;
+                    default:
+                        return ApiKeyStatus.OTHER_ERROR;
+                }
+            } catch (IOException | InterruptedException e) {
+                return ApiKeyStatus.NETWORK_ERROR;
             }
-        """, prompt);
+        });
+    }
+
+    /**
+     * 发送ai请求入口，包括进行验证。
+     *
+     * @param prompt 用户提示词
+     * @return Deepseek返回信息
+     * @throws IOException 数据异常
+     * @throws InterruptedException 连接中断
+     * @deprecated 不兼容历史管理，请使用 {@link #askWithMessages(List)} 发起请求
+     */
+    @Deprecated
+    public CompletableFuture<String> ask(String prompt) throws IOException, InterruptedException {
+        return validationFuture.thenCompose(status -> {
+            if (status != ApiKeyStatus.SUCCESS) {
+                // 根据状态生成对应的错误信息
+                String errorMsg = switch (status) {
+                    case UNAUTHORIZED -> "Api-key invalid, please contact with server admins.";
+                    case INSUFFICIENT_BALANCE -> "Run out of money!( Please inform server admins.";
+                    case NETWORK_ERROR -> "Request failed, please contact with server admins.";
+                    case OTHER_ERROR -> "Unknown errors, please contact with server admins.";
+                    default -> "Unexpected unknown errors!";
+                };
+                return CompletableFuture.failedFuture(new RuntimeException(errorMsg));
+            }
+
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    return doRequest(prompt);
+                } catch (IOException | InterruptedException e) {
+                    throw new RuntimeException("Request failed: " + e.getMessage(), e);
+                } catch (Exception e) {
+                    throw new RuntimeException("Service abnormal: " + e.getMessage(), e);
+                }
+            });
+        });
+    }
+
+    /**
+     * 发送ai请求入口，包括进行验证。
+     *
+     * @param messages 包含上下文的消息
+     * @return ai返回消息
+     * @see AiChatManagerActions
+     */
+    public CompletableFuture<String> askWithMessages(List<Map<String, String>> messages)
+    {
+        return validationFuture.thenCompose(
+                status -> {
+                    if (status != ApiKeyStatus.SUCCESS) {
+                        String errorMsg = switch (status) {
+                            case UNAUTHORIZED -> "Api-key invalid, please contact with server admins.";
+                            case INSUFFICIENT_BALANCE -> "Run out of money! Please inform server admins.";
+                            case NETWORK_ERROR -> "Request failed, please contact with server admins.";
+                            case OTHER_ERROR -> "Unknown errors, please contact with server admins.";
+                            default -> "Unexpected unknown errors!";
+                        };
+                        return CompletableFuture.failedFuture(new RuntimeException(errorMsg));
+                    }
+
+                    return CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return doRequestWithMessages(messages);
+                        } catch (IOException | InterruptedException e) {
+                            throw new RuntimeException("Request failed: " + e.getMessage(), e);
+                        } catch (Exception e) {
+                            throw new RuntimeException("Service abnormal: " + e.getMessage(), e);
+                        }
+                    });
+
+                }
+        );
+    }
+
+    /**
+     * 发起ai请求。
+     *
+     * @param prompt 提示词
+     * @return Deepseek返回消息
+     * @throws IOException 数据异常
+     * @throws InterruptedException 连接中断
+     * @deprecated {@link #ask(String)}方法已弃用，请使用{@link #askWithMessages(List)}
+     */
+    @Deprecated
+    private String doRequest(String prompt) throws IOException, InterruptedException {
+
+        JsonObject body = new JsonObject();
+        body.addProperty("model", "deepseek-v4-flash");
+
+        JsonArray messages = new JsonArray();
+        JsonObject userMsg = new JsonObject();
+        userMsg.addProperty("role", "user");
+        userMsg.addProperty("content", prompt);
+        messages.add(userMsg);
+        body.add("messages", messages);
+
+        String json = new Gson().toJson(body);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.deepseek.com/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(json))
+                .timeout(Duration.ofSeconds(30))
                 .build();
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
         String responseBody = response.body();
-        JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
 
-        // 检查是否有错误（DeepSeek 返回错误时会有 error 字段）
-        if (jsonObject.has("error")) {
-            String errorMsg = jsonObject.get("error").getAsJsonObject().get("message").getAsString();
-            throw new RuntimeException("API 错误: " + errorMsg);
+        try {
+            JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
+
+            if (jsonObject.has("error")) {
+                String errorMsg = jsonObject.get("error").getAsJsonObject().get("message").getAsString();
+                throw new RuntimeException("API error: " + errorMsg);
+            }
+
+            String content = jsonObject
+                    .getAsJsonArray("choices")
+                    .get(0)
+                    .getAsJsonObject()
+                    .getAsJsonObject("message")
+                    .get("content")
+                    .getAsString();
+            return content;
+        } catch (Exception e) {
+            throw new RuntimeException("API unstandard reply: " + responseBody, e);
         }
-
-        // 提取 content
-        String content = jsonObject
-                .getAsJsonArray("choices")          // 拿到 choices 数组
-                .get(0)                             // 取第一个元素
-                .getAsJsonObject()                  // 转为对象
-                .getAsJsonObject("message")         // 取 message
-                .get("content")                     // 取 content
-                .getAsString();                     // 转为字符串
-
-        return content; // 直接返回纯文本，上层直接显示就行
     }
 
-    public ApiKeyStatus getIsValid() {
-        return isValid;
+    private String doRequestWithMessages(List<Map<String, String>> messages) throws IOException, InterruptedException {
+        JsonObject body = new JsonObject();
+        body.addProperty("model", "deepseek-v4-flash");
+
+        JsonArray msgArray = new JsonArray();
+        for (Map<String, String> msg : messages) {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("role", msg.get("role"));
+            obj.addProperty("content", msg.get("content"));
+            msgArray.add(obj);
+        }
+        body.add("messages", msgArray);
+
+        String json = new Gson().toJson(body);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.deepseek.com/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        String responseBody = response.body();
+
+        try {
+            JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
+
+            if (jsonObject.has("error")) {
+                String errorMsg = jsonObject.get("error").getAsJsonObject().get("message").getAsString();
+                throw new RuntimeException("API error: " + errorMsg);
+            }
+
+            return jsonObject
+                    .getAsJsonArray("choices")
+                    .get(0)
+                    .getAsJsonObject()
+                    .getAsJsonObject("message")
+                    .get("content")
+                    .getAsString();
+        } catch (Exception e) {
+            throw new RuntimeException("API unstandard reply: " + responseBody, e);
+        }
     }
 }
