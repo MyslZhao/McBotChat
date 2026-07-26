@@ -52,16 +52,12 @@ class ChatWithAiActions {
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                 int code = response.statusCode();
-                switch (code) {
-                    case 200:
-                        return ApiKeyStatus.SUCCESS;
-                    case 401:
-                        return ApiKeyStatus.UNAUTHORIZED;
-                    case 402:
-                        return ApiKeyStatus.INSUFFICIENT_BALANCE;
-                    default:
-                        return ApiKeyStatus.OTHER_ERROR;
-                }
+                return switch (code) {
+                    case 200 -> ApiKeyStatus.SUCCESS;
+                    case 401 -> ApiKeyStatus.UNAUTHORIZED;
+                    case 402 -> ApiKeyStatus.INSUFFICIENT_BALANCE;
+                    default -> ApiKeyStatus.OTHER_ERROR;
+                };
             } catch (IOException | InterruptedException e) {
                 return ApiKeyStatus.NETWORK_ERROR;
             }
@@ -73,15 +69,13 @@ class ChatWithAiActions {
      *
      * @param prompt 用户提示词
      * @return Deepseek返回信息
-     * @throws IOException 数据异常
-     * @throws InterruptedException 连接中断
+     * @throws RuntimeException api错误信息
      * @deprecated 不兼容历史管理，请使用 {@link #askWithMessages(List)} 发起请求
      */
     @Deprecated
-    public CompletableFuture<String> ask(String prompt) throws IOException, InterruptedException {
+    public CompletableFuture<String> ask(String prompt) throws RuntimeException{
         return validationFuture.thenCompose(status -> {
             if (status != ApiKeyStatus.SUCCESS) {
-                // 根据状态生成对应的错误信息
                 String errorMsg = switch (status) {
                     case UNAUTHORIZED -> "Api-key invalid, please contact with server admins.";
                     case INSUFFICIENT_BALANCE -> "Run out of money!( Please inform server admins.";
@@ -109,9 +103,10 @@ class ChatWithAiActions {
      *
      * @param messages 包含上下文的消息
      * @return ai返回消息
+     * @throws RuntimeException apikey错误信息
      * @see AiChatManagerActions
      */
-    public CompletableFuture<String> askWithMessages(List<Map<String, String>> messages)
+    public CompletableFuture<String> askWithMessages(List<Map<String, String>> messages) throws RuntimeException
     {
         return validationFuture.thenCompose(
                 status -> {
@@ -183,14 +178,13 @@ class ChatWithAiActions {
                 throw new RuntimeException("API error: " + errorMsg);
             }
 
-            String content = jsonObject
+            return jsonObject
                     .getAsJsonArray("choices")
                     .get(0)
                     .getAsJsonObject()
                     .getAsJsonObject("message")
                     .get("content")
                     .getAsString();
-            return content;
         } catch (Exception e) {
             throw new RuntimeException("API unstandard reply: " + responseBody, e);
         }

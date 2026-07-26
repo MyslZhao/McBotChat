@@ -19,15 +19,20 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
     private boolean hasDataFolder = true;
     private String apiKey;
     private String systemPrompt;
+    private String chatbotName;
     private AiChatManagerActions aiChatManagerActions;
     private PlayerListener playerListener;
 
     private void createConfig(File configFile) throws IOException{
         try (var writer = Files.newBufferedWriter(configFile.toPath(), StandardCharsets.UTF_8)) {
             writer.write("#Set your deepseek api-key down here\n");
-            writer.write("api_key=sk-pleaseinputyourapikeyhere\n");
+            writer.write("api_key=sk-pleaseinputyourapikeyhere\n\n");
+            writer.write("#Set your ai chat name here (blank for using 'Ai' for chatbot name)\n");
+            writer.write("chatbot_name=deepseek\n\n");
             writer.write("#Set your own system prompt (or set to 'null' for using default prompt) here\n");
+            writer.write("#Do not retell the name you give to the bot in the prompt, which probably would cause a conflict with chatbot_name property!\n");
             writer.write("system_prompt=null\n");
+
         }
         getLogger().log(Level.WARNING,
                 "A new config.cfg file has generated, please set your api-key!");
@@ -49,7 +54,7 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
                 getLogger().info("Api-key settings has loaded.");
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            getLogger().log(Level.SEVERE, "Fail to load file",e);
         }
     }
 
@@ -64,7 +69,24 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
             props.load(reader);
             systemPrompt = props.getProperty("system_prompt", "");
         } catch (IOException e) {
-            e.printStackTrace();
+            getLogger().log(Level.SEVERE, "Fail to load file",e);
+        }
+    }
+
+    /**
+     * 重载 Ai 聊天时的识别名称
+     * @param configFile 配置文件路径
+     */
+    private void loadChatbotName(File configFile) {
+        Properties props = new Properties();
+        try (var reader = new InputStreamReader(new FileInputStream(configFile), StandardCharsets.UTF_8)) {
+            props.load(reader);
+            chatbotName = props.getProperty("chatbot_name", "deepseek");
+            if (Objects.equals(chatbotName, "")) {
+                chatbotName = "Ai";
+            }
+        }catch (IOException e) {
+            getLogger().log(Level.SEVERE, "Fail to load file",e);
         }
     }
 
@@ -74,6 +96,7 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
     private void reloadPlugin() {
         apiKey = null;
         systemPrompt = "";
+        chatbotName = "deepseek";
 
         if (hasDataFolder) {
             File configFile = new File(getDataFolder(), "config.cfg");
@@ -83,6 +106,7 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
             }
             loadApiKey(configFile);
             loadSystemPrompt(configFile);
+            loadChatbotName(configFile);
         }
 
         AiChatManagerActions newManager = createAiChatManager();
@@ -102,9 +126,9 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
      */
     private AiChatManagerActions createAiChatManager() {
         if (Objects.equals(systemPrompt, "null")) {
-            return new AiChatManagerActions(apiKey);
+            return new AiChatManagerActions(apiKey, chatbotName);
         } else {
-            return new AiChatManagerActions(apiKey, systemPrompt);
+            return new AiChatManagerActions(apiKey, systemPrompt, chatbotName);
         }
     }
 
@@ -139,7 +163,7 @@ public final class McBotChat extends JavaPlugin implements CommandExecutor {
                 try{
                     createConfig(configFile);
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    getLogger().log(Level.SEVERE, "Fail to create config.cfg",e);
                 }
             }
 

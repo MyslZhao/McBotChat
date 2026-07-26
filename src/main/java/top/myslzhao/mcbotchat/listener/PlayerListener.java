@@ -2,6 +2,7 @@ package top.myslzhao.mcbotchat.listener;
 
 import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.TestOnly;
 import top.myslzhao.mcbotchat.actions.AiChatManagerActions;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
@@ -10,7 +11,6 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -28,15 +28,17 @@ public class PlayerListener implements Listener {
         this.plugin = plugin;
     }
 
-    /**
+    /*
      * 玩家进入游戏时打印提示信息, 用于测试插件正常运行。
      *
      * @param event 玩家加入事件
-     */
+     *
+    @TestOnly
     @EventHandler
     public void onPlayerEnter(PlayerJoinEvent event){
         Bukkit.getServer().broadcast(Component.text("Ai>hello " + event.getPlayer().getName()));
     }
+    */
 
     /**
      * 玩家打出`>`前缀信息时调用 Ai 聊天。
@@ -45,6 +47,13 @@ public class PlayerListener implements Listener {
      */
     @EventHandler
     public void onPlayerChat(AsyncChatEvent event) throws IOException, InterruptedException {
+        Component msgComponent = event.originalMessage();
+        String msgRowString = PlainTextComponentSerializer.plainText().serialize(msgComponent);
+
+        if (!msgRowString.startsWith(">")){
+            return;
+        }
+
         UUID uuid = event.getPlayer().getUniqueId();
         long now = System.currentTimeMillis();
         if (cooldown.containsKey(uuid) && now - cooldown.get(uuid) < COOLDOWN_MS) {
@@ -52,13 +61,6 @@ public class PlayerListener implements Listener {
             return;
         }
         cooldown.put(uuid, now);
-
-        Component msgComponent = event.originalMessage();
-        String msgRowString = PlainTextComponentSerializer.plainText().serialize(msgComponent);
-
-        if (!msgRowString.startsWith(">")){
-            return;
-        }
 
         event.setCancelled(true);
 
@@ -72,7 +74,7 @@ public class PlayerListener implements Listener {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         Bukkit.getServer().broadcast(
                                 Component.text(
-                                        "< Ai>" + event.getPlayer().getName() + " > " + ans,
+                                        "< " + aiChatManagerActions.getChatbotName() +">" + event.getPlayer().getName() + " > " + ans,
                                         TextColor.color(69, 151, 3)
                                 )
                         );

@@ -14,22 +14,26 @@ public class AiChatManagerActions {
     private final List<Map<String, String>> history =
             Collections.synchronizedList(new ArrayList<>());
     private final ChatWithAiActions chatWithAiActions;
+
     private static final int MAX_HISTORY_SIZE = 20;
     private static final Semaphore SEMAPHORE = new Semaphore(5);
+
     private final String systemPrompt;
+    private final String chatbotName;
 
-
-    public AiChatManagerActions(String apiKey){
+    public AiChatManagerActions(String apiKey, String chatbotName){
         this.chatWithAiActions = new ChatWithAiActions(apiKey);
+        this.chatbotName = chatbotName;
         this.systemPrompt =
                 "你是一个在 Minecraft 服务器中提供帮助的 AI 助手。" +
                         "所有玩家可以与你聊天，你需要记住之前的对话内容。" +
                         "请用中文回答。";
     }
 
-    public AiChatManagerActions(String apiKey, String systemPrompt){
+    public AiChatManagerActions(String apiKey, String systemPrompt, String chatbotName){
         this.chatWithAiActions = new ChatWithAiActions(apiKey);
-        this.systemPrompt = systemPrompt; // 后续加入 config.cfg自行设置
+        this.systemPrompt = systemPrompt;
+        this.chatbotName = chatbotName;
     }
 
     /**
@@ -61,6 +65,13 @@ public class AiChatManagerActions {
     }
 
     /**
+     * 返回 Ai 聊天用名称
+     */
+    public String getChatbotName() {
+        return chatbotName;
+    }
+
+    /**
      * 删除超出队列的历史消息
      */
     private void trimHistory() {
@@ -69,6 +80,16 @@ public class AiChatManagerActions {
                 history.removeFirst();
             }
         }
+    }
+
+    /**
+     * 在系统提示词前加入名字提示词。
+     *
+     * @return 完整的系统提示词
+     */
+    private String preConstructSystemPrompt() {
+        String introductionMsg = "你的名字叫" + chatbotName + "。";
+        return (introductionMsg + systemPrompt);
     }
 
     /**
@@ -81,7 +102,7 @@ public class AiChatManagerActions {
     public List<Map<String, String>> buildMessage(String currentPlayerName, String currentMessage) {
         List<Map<String, String>> messages = new ArrayList<>();
 
-        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(Map.of("role", "system", "content", preConstructSystemPrompt()));
 
         synchronized (history) {
             messages.addAll(new ArrayList<>(history));
